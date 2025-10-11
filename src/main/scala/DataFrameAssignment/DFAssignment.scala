@@ -63,7 +63,15 @@ object DFAssignment {
    *                SHAs.
    * @return DataFrame of commits from the requested authors including the commit SHA.
    */
-  def assignment_13(commits: DataFrame, committers: Seq[String]): DataFrame = ???
+  def assignment_13(commits: DataFrame, committers: Seq[String]): DataFrame = {
+    commits
+      .filter(col("commit.committer.name").isin(committers: _*))
+      .select(
+        col("commit.committer.name").as("committer"),
+        col("sha").as("sha")
+      )
+      .orderBy(col("committer").asc)
+  }
 
   /**
    *                                   Description
@@ -106,7 +114,10 @@ object DFAssignment {
    * @param commits Commit Dataframe, created from the data_raw.json file.
    * @return the inputted DataFrame appended with a day column.
    */
-  def assignment_15(commits: DataFrame): DataFrame = ???
+  def assignment_15(commits: DataFrame): DataFrame = {
+    commits
+      .withColumn("day", date_format(col("commit.committer.date"), "EEE"))
+  }
 
   /**
    *                                            Description
@@ -175,7 +186,20 @@ object DFAssignment {
    * @param committerName Name of the author for which the result must be generated.
    * @return DataFrame with columns as described above.
    */
-  def assignment_17(commits: DataFrame, committerName: String): DataFrame = ???
+  def assignment_17(commits: DataFrame, committerName: String): DataFrame = {
+    commits
+      .filter(col("commit.committer.name") === committerName)
+      .select(col("_id.$oid").as("$oid"), col("commit.committer.date").as("date"))
+      .withColumn("date_ts", col("date").cast("timestamp"))
+      .withColumn("prev_ts", lag(col("date_ts"), 1).over(Window.orderBy(col("date_ts").asc)))
+      .withColumn("days_diff", coalesce(datediff(col("date_ts"), col("prev_ts")), lit(0)))
+      .withColumn(
+        "minutes_diff",
+        coalesce(floor((unix_timestamp(col("date_ts")) - unix_timestamp(col("prev_ts"))) / 60), lit(0)).cast("long")
+      )
+      .drop("prev_ts", "date_ts")
+      .orderBy(col("date").asc)
+  }
 
 
   /**
@@ -224,7 +248,19 @@ object DFAssignment {
    *                `println(commits.schema)`.
    * @return DataFrame containing the parent name and the count for the parent.
    */
-  def assignment_19(commits: DataFrame): DataFrame = ???
+  def assignment_19(commits: DataFrame): DataFrame = {
+    commits
+      .select(col("sha"), col("commit.committer.name").as("committer_name"), explode(col("parents.sha")).as("parent_sha"))
+      .join(
+        commits.select(col("sha").as("parent_sha"), col("commit.committer.name").as("parent_name")),
+        Seq("parent_sha"),
+        "inner"
+      )
+      .filter(col("committer_name") =!= col("parent_name"))
+      .groupBy("parent_name")
+      .agg(count("*").as("times_parent"))
+      .orderBy(col("times_parent").desc)
+  }
 
 
 
