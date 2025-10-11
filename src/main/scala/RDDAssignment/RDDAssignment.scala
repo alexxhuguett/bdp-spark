@@ -234,7 +234,23 @@ object RDDAssignment {
    * @param commits RDD containing commit data.
    * @return RDD containing the repository names, list of tuples of Timestamps and commit author names
    */
-  def assignment_9(commits: RDD[Commit]): RDD[(String, Iterable[(Timestamp, String)])] = ???
+  def assignment_9(commits: RDD[Commit]): RDD[(String, Iterable[(Timestamp, String)])] = {
+    commits
+      // Get repo names with author and timestamp
+      .map { c =>
+        val url     = Option(c.url).getOrElse("")
+        val parts   = url.split("/")
+        val repo    = if (parts.length >= 6) parts(5) else ""
+        val user = c.commit.author
+        val author = user.name
+        val time = user.date
+
+        (repo, (time, author))
+      }
+      // Fold per key
+      .groupByKey()
+      .mapValues(_.toList)
+  }
 
 
   /**
