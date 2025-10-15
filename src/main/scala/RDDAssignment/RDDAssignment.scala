@@ -4,7 +4,6 @@ import java.math.BigInteger
 import java.security.MessageDigest
 import java.sql.Timestamp
 import java.util.UUID
-
 import org.apache.spark.graphx._
 import org.apache.spark.rdd.RDD
 import utils.{Commit, File, Stats}
@@ -32,7 +31,9 @@ object RDDAssignment {
    * @param commits RDD containing commit data.
    * @return Long indicating the number of commits in the given RDD.
    */
-  def assignment_1(commits: RDD[Commit]): Long = ???
+  def assignment_1(commits: RDD[Commit]): Long = {
+    return commits.count()
+  }
 
   /**
    *                                     Description
@@ -62,7 +63,7 @@ object RDDAssignment {
    *                                           Hints
    *
    * Files in a directory must have unique names but can have the same name in different directories.
-   * During refactoring, files can be moved between directories directories, resulting in the same file
+   * During refactoring, files can be moved between directories, resulting in the same file
    * having a different absolute path from a point in time. However, a directory can have more than
    * one file with the same name (but in different directories), so just taking the file name might be too lenient.
    * To simplify things, you may assume that an absolute path is sufficient to identify a file. To further simplify this,
@@ -70,7 +71,13 @@ object RDDAssignment {
    * @param commits RDD containing commit data.
    * @return A tuple containing the filename and number of changes.
    */
-  def assignment_3(commits: RDD[Commit]): (String, Long) = ???
+  def assignment_3(commits: RDD[Commit]): (String, Long) = {
+    commits
+      .flatMap(commit => commit.files)
+      .map(file => (file.filename.getOrElse("unknown"), file.changes))
+      .reduceByKey(_ + _)
+      .reduce((a, b) => if (a._2 >= b._2) a else b)
+  }
 
   /**
    *                                        Description
@@ -114,7 +121,21 @@ object RDDAssignment {
    * @param fileExtensions List of String containing file extensions
    * @return RDD containing file extension and an aggregation of the committers' Stats.
    */
-  def assignment_5(commits: RDD[Commit], fileExtensions: List[String]): RDD[(String, Stats)] = ???
+  def assignment_5(commits: RDD[Commit], fileExtensions: List[String]): RDD[(String, Stats)] = {
+    commits
+      .flatMap(commit => commit.files)
+      .filter(file =>
+        file.filename.isDefined &&
+          fileExtensions.exists(ext => file.filename.get.endsWith(s".$ext"))
+      )
+      .map(file => {
+        val extension = file.filename.get.split("\\.").last
+        (extension, Stats(file.changes, file.additions, file.deletions))
+      })
+      .reduceByKey((s1, s2) =>
+        Stats(s1.total + s2.total, s1.additions + s2.additions, s1.deletions + s2.deletions)
+      )
+  }
 
   /**
    *                                        Description
@@ -163,7 +184,26 @@ object RDDAssignment {
    * @param commits RDD containing commit data.
    * @return RDD of Tuple type containing a repository name and a double representing the average streak length.
    */
-  def assignment_7(commits: RDD[Commit]): RDD[(String, Double)] = ???
+  def assignment_7(commits: RDD[Commit]): RDD[(String, Double)] = {
+    val eligibleStart = "^(Revert|Reverted)\\b".r
+    val revertToken   = "Revert".r
+
+    commits
+      .map { c =>
+        val url     = Option(c.url).getOrElse("")
+        val parts   = url.split("/")
+        val repo    = if (parts.length >= 6) parts(5) else ""
+
+        val msg         = Option(c.commit).flatMap(cc => Option(cc.message)).getOrElse("").trim
+        val isEligible  = eligibleStart.findFirstIn(msg).isDefined
+        val streak      = if (isEligible) revertToken.findAllMatchIn(msg).length else 0
+
+        (repo, (streak, 1))
+      }
+      .filter { case (repo, _) => repo.nonEmpty }
+      .reduceByKey { case ((s1, n1), (s2, n2)) => (s1 + s2, n1 + n2) }
+      .mapValues { case (sum, n) => sum.toDouble / n }
+  }
 
   /**
    *
@@ -194,7 +234,23 @@ object RDDAssignment {
    * @param commits RDD containing commit data.
    * @return RDD containing the repository names, list of tuples of Timestamps and commit author names
    */
-  def assignment_9(commits: RDD[Commit]): RDD[(String, Iterable[(Timestamp, String)])] = ???
+  def assignment_9(commits: RDD[Commit]): RDD[(String, Iterable[(Timestamp, String)])] = {
+    commits
+      // Get repo names with author and timestamp
+      .map { c =>
+        val url     = Option(c.url).getOrElse("")
+        val parts   = url.split("/")
+        val repo    = if (parts.length >= 6) parts(5) else ""
+        val user = c.commit.author
+        val author = user.name
+        val time = user.date
+
+        (repo, (time, author))
+      }
+      // Fold per key
+      .groupByKey()
+      .mapValues(_.toList)
+  }
 
 
   /**
@@ -247,6 +303,33 @@ object RDDAssignment {
    * @param commits RDD containing commit data.
    * @return Graph representation of the commits as described above.
    */
-  def assignment_11(commits: RDD[Commit]): Graph[(String, String), String] = ???
+  def assignment_11(commits: RDD[Commit]): Graph[(String, String), String] = {
+    val committerRepos = commits
+      .map(commit => (commit.commit.committer.name, commit.url.split("/")(5)))
+      .distinct()
+
+    val committerVertices = committerRepos
+      .map(_._1)
+      .distinct()
+      .map(name => (md5HashString(name).toLong, (name, "developer")))
+
+    val repoVertices = committerRepos
+      .map(_._2)
+      .distinct()
+      .map(repo => (md5HashString(repo).toLong, (repo, "repository")))
+
+    val vertices = committerVertices.union(repoVertices)
+
+    val edges = committerRepos.flatMap { case (committer, repo) =>
+      val committerId = md5HashString(committer).toLong
+      val repoId = md5HashString(repo).toLong
+      Seq(
+        Edge(committerId, repoId, "commits_to"),
+        Edge(repoId, committerId, "has_committer")
+      )
+    }
+
+    Graph(vertices, edges)
+  }
 }
 
