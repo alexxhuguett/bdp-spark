@@ -50,7 +50,15 @@ object RDDAssignment {
    * @param commits RDD containing commit data.
    * @return RDD containing tuples indicating the email domain (extension) and number of occurrences.
    */
-  def assignment_2(commits: RDD[Commit]): RDD[(String, Long)] = ???
+  def assignment_2(commits: RDD[Commit]): RDD[(String, Long)] = {
+    commits
+      .map(commit => commit.commit.author.email)
+      .filter(email => email.contains("@"))
+      .distinct()
+      .map(email => email.split("@")(1))
+      .groupBy(identity)
+      .mapValues(_.size)
+  }
 
   /**
    *                                        Description
@@ -95,7 +103,14 @@ object RDDAssignment {
    * @param commits RDD containing commit data.
    * @return RDD containing the rank number, commit author names and number of comments of author in order.
    */
-  def assignment_4(commits: RDD[Commit]): RDD[(Long, String, Long)] = ???
+  def assignment_4(commits: RDD[Commit]): RDD[(Long, String, Long)] = {
+    commits
+      .map(commit => (commit.commit.author.name, commit.commit.comment_count))
+      .reduceByKey(_+_) // (name, comments)
+      .sortBy {case (name, comments) => (-comments, name)}
+      .zipWithIndex() // (name, comments), index
+      .map { case ((name, comments), index) => (index, name, comments) }
+  }
 
   /**
    *                                        Description
@@ -152,7 +167,19 @@ object RDDAssignment {
    * @param commits RDD containing commit data.
    * @return RDD of Strings representing the author names that have both committed to and own repositories.
    */
-  def assignment_6(commits: RDD[Commit]): RDD[String] = ???
+  def assignment_6(commits: RDD[Commit]): RDD[String] = {
+    val owners = commits
+      .map(commit => (commit.url.split("/")(4), ())) // (login, dummy)
+    val authors = commits
+      .flatMap(commit => commit.author.map(author => (author.login, commit.commit.author.name))
+      ) // (login, name)
+
+    val joined = authors
+      .join(owners)
+    joined
+      .map { case (_, (name, _)) => name }
+      .distinct()
+  }
 
 
   /**                                       IMPORTANT NOTE!!!!!!
@@ -217,7 +244,18 @@ object RDDAssignment {
    * @return RDD of tuple containing committer name, list of repositories and
    * total number of commits committed across all repositories.
    */
-  def assignment_8(commits: RDD[Commit]): RDD[(String, Iterable[String], Long)] = ???
+  def assignment_8(commits: RDD[Commit]): RDD[(String, Iterable[String], Long)] = {
+    val repos = commits
+      .map(commit => (commit.commit.committer.name, List(commit.url.split("/")(5))))
+      .distinct() // name, list(repos)
+      .reduceByKey((repo1, repo2) => repo1 ++ repo2)
+    val counts = commits
+      .map(commit => (commit.commit.committer.name, 1))
+      .reduceByKey(_+_) // mail, commits amount
+    repos
+      .join(counts)
+      .map { case (name, (repos, tot)) => (name, repos, tot)}
+  }
 
 
   /**
@@ -267,7 +305,17 @@ object RDDAssignment {
    * @param repository String name of repository
    * @return RDD containing tuples representing a file name and a list of tuples of committer names and Stats object.
    */
-  def assignment_10(commits: RDD[Commit], repository: String): RDD[(String, List[(String, Stats)])] = ???
+  def assignment_10(commits: RDD[Commit], repository: String): RDD[(String, List[(String, Stats)])] = {
+    commits.filter(commit => commit.url.split("/")(5) == repository)
+      .map(commit => (commit.commit.committer.name, commit.files // name, List(files)
+        .map(file => (file.filename.get, Stats(
+          file.changes,
+          file.additions,
+          file.deletions))))) // name, List(filename, stats)
+      .flatMap { case (name, files) => files
+        .map { case (file, stats) => (file, List((name, stats))) } } // filename (name stats)
+      .reduceByKey(_ ++ _)
+  }
 
 
   /**
