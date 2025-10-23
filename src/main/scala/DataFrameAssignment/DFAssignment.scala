@@ -43,7 +43,15 @@ object DFAssignment {
    * @return DataFrame of commits including the commit timestamp
    *         and the length of the message in that commit.
    */
-  def assignment_12(commits: DataFrame): DataFrame = ???
+  def assignment_12(commits: DataFrame): DataFrame = {
+    val x = commits.select(
+      col("commit.committer.name").as("committer"),
+      col("commit.committer.date").as("timestamp"),
+      length(col("commit.message")).as("message_length")
+    )
+    x.show()
+    x
+  }
 
   /**
    *                                    Description
@@ -91,7 +99,18 @@ object DFAssignment {
    * @return Dataframe containing 4 columns, Repository name, committer name, year
    *         and the number of commits for a given year.
    */
-  def assignment_14(commits: DataFrame): DataFrame = ???
+  def assignment_14(commits: DataFrame): DataFrame = {
+    val x = commits
+      .select(
+        split(col("url"), "/").getItem(5).as("repository"),
+        col("commit.committer.name").as("committer"),
+        year(col("commit.committer.date")).as("year")
+      )
+      .groupBy("repository", "committer", "year")
+      .count()
+    x.show()
+    x
+  }
 
   /**
    *                                        Description
@@ -125,7 +144,7 @@ object DFAssignment {
    * We want to know how often some committers commit, and more specifically, what are their time intervals
    * between their commits. To achieve that, for each commit, we want to add two columns:
    * the column with the previous commits of that user and the next commit of that user. The dates provided should be
-   * independent from depository - if a user works on a few repositories at the same time, the previous date or the
+   * independent from repository - if a user works on a few repositories at the same time, the previous date or the
    * next date can be from a different repository.
    *
    *                                              Output
@@ -148,7 +167,24 @@ object DFAssignment {
    * @param committerName Name of the author for which the result must be generated.
    * @return DataFrame with a columns `$oid` , `prev_date`, `date` and `next_date`
    */
-  def assignment_16(commits: DataFrame, committerName: String): DataFrame = ???
+  def assignment_16(commits: DataFrame, committerName: String): DataFrame = {
+    val x = commits
+      .select(
+        col("_id.$oid").as("oid"),
+        col("commit.committer.date"), //**duplicates**
+        col("commit.committer.name").as("committer")
+      )
+      .filter(col("committer") === committerName)
+    val w = Window.partitionBy("committer").orderBy(col("date"))
+    val y = x.select(
+      col("oid"),
+      lag(col("date"), 1).over(w).as("prev_date"),
+      col("date"),
+      lead(col("date"), 1).over(w).as("next_date")
+    )
+    y.show()
+    y
+  }
 
 
   /**
@@ -224,7 +260,17 @@ object DFAssignment {
    * @return DataFrame containing a `repository` column, a `month` column and a `commits_per_month`
    *         representing a count of the total number of commits that that were ever made during that month.
    */
-  def assignment_18(commits: DataFrame): DataFrame = ???
+  def assignment_18(commits: DataFrame): DataFrame = {
+    val x = commits
+      .select(
+        split(col("url"), "/").getItem(5).as("repository"),
+        month(col("commit.committer.date")).as("month")
+      )
+      .groupBy("repository", "month")
+      .count()
+    x.show()
+    x
+  }
 
   /**
    *                                        Description
