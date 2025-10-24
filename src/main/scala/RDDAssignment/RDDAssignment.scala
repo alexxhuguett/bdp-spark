@@ -105,11 +105,11 @@ object RDDAssignment {
    */
   def assignment_4(commits: RDD[Commit]): RDD[(Long, String, Long)] = {
     commits
-      .map(commit => (commit.commit.author.name, commit.commit.comment_count))
-      .reduceByKey(_+_) // (name, comments)
-      .sortBy {case (name, comments) => (-comments, name)}
-      .zipWithIndex() // (name, comments), index
-      .map { case ((name, comments), index) => (index, name, comments) }
+      .map(c => (c.commit.author.name, c.commit.comment_count.toLong))              
+      .reduceByKey(_ + _)
+      .sortBy { case (name, comments) => (-comments, name.toLowerCase, name) }
+      .zipWithIndex()
+      .map { case ((name, comments), rank) => (rank, name, comments) }
   }
 
   /**
